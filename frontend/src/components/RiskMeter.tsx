@@ -1,45 +1,41 @@
-interface Props {
-  score: number
-}
+interface Props { score: number }
 
 export default function RiskMeter({ score }: Props) {
+  const s = Math.max(0, Math.min(100, score || 0))
 
-  // ✅ Clamp score between 0–100
-  const safeScore = Math.max(0, Math.min(100, score || 0))
+  const color =
+    s < 30 ? { bar: "#22c55e", text: "text-green-400",  glow: "rgba(34,197,94,0.4)"  } :
+    s < 70 ? { bar: "#eab308", text: "text-yellow-400", glow: "rgba(234,179,8,0.4)"  } :
+             { bar: "#ef4444", text: "text-red-400",    glow: "rgba(239,68,68,0.4)"  }
 
-  // ✅ Dynamic color
-  const getColor = () => {
-    if (safeScore < 30) return "bg-green-500"
-    if (safeScore < 70) return "bg-yellow-500"
-    return "bg-red-500"
-  }
-
-  // ✅ Risk Label
-  const getLabel = () => {
-    if (safeScore < 30) return "Low Risk"
-    if (safeScore < 70) return "Medium Risk"
-    return "High Risk"
-  }
+  const label = s < 30 ? "Low Risk" : s < 70 ? "Medium Risk" : "High Risk"
 
   return (
-    <div className="bg-slate-900 p-4 rounded-xl border border-cyan-500/20 shadow-lg">
+    <div className="risk-meter-wrap">
+      <div className="flex justify-between items-center mb-1.5">
+        <span className="text-xs text-cyan-400 font-semibold tracking-wider uppercase">AI Threat Risk</span>
+        <span className={`text-xs font-bold ${color.text}`}>{label} — {s}%</span>
+      </div>
 
-      <p className="text-sm mb-2 text-cyan-400 font-semibold">
-        AI Threat Risk
-      </p>
-
-      <div className="w-full bg-slate-800 h-4 rounded overflow-hidden">
+      <div className="risk-track">
         <div
-          className={`h-4 ${getColor()} transition-all duration-500`}
-          style={{ width: `${safeScore}%` }}
+          className="risk-bar"
+          style={{
+            width:      `${s}%`,
+            background: color.bar,
+            boxShadow:  `0 0 8px ${color.glow}`,
+          }}
         />
       </div>
 
-      <div className="flex justify-between mt-2 text-xs">
-        <span>{safeScore}%</span>
-        <span className="opacity-70">{getLabel()}</span>
+      {/* tick marks */}
+      <div className="flex justify-between mt-1 text-[9px] text-slate-600 px-0.5">
+        <span>0</span>
+        <span>LOW</span>
+        <span>MED</span>
+        <span>HIGH</span>
+        <span>100</span>
       </div>
-
     </div>
   )
 }

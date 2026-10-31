@@ -8,13 +8,16 @@ export default {
     extend: {
       colors: {
         cyber: {
-          dark: "#0f172a",
-          primary: "#1e293b",
-          accent: "#2563eb",
-          light: "#f1f5f9",
+          dark:    "#020617",
+          primary: "#0f172a",
+          card:    "#1e293b",
+          accent:  "#22d3ee",
+          light:   "#f1f5f9",
         },
       },
     },
   },
   plugins: [],
 }
+
+

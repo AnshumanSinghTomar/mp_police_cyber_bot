@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mp-police-cyber-bot
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false

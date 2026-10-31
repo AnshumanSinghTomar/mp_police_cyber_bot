@@ -8,7 +8,15 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:5000",
         changeOrigin: true,
-      }
-    }
-  }
+      },
+      "/generate-fir": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+      "/download-fir": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
+  },
 })
