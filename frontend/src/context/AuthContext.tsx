@@ -16,6 +16,13 @@ interface AuthUser {
   isGuest?: boolean;
 }
 
+interface StoredAccount {
+  email: string;
+  passwordHash: string;
+  displayName: string;
+  createdAt: number;
+}
+
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
@@ -33,6 +40,30 @@ const isFirebaseActive = Boolean(
   !import.meta.env.VITE_FIREBASE_API_KEY.includes("Dummy") &&
   !import.meta.env.VITE_FIREBASE_API_KEY.includes("...")
 );
+
+// Secure SHA-256 password hashing using Browser Web Crypto API
+async function hashPassword(password: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getStoredAccounts(): Record<string, StoredAccount> {
+  try {
+    const raw = localStorage.getItem("mp_cyber_accounts");
+    const accounts = raw ? JSON.parse(raw) : {};
+    return accounts;
+  } catch {
+    return {};
+  }
+}
+
+function saveAccount(acc: StoredAccount) {
+  const accounts = getStoredAccounts();
+  accounts[acc.email.toLowerCase().trim()] = acc;
+  localStorage.setItem("mp_cyber_accounts", JSON.stringify(accounts));
+}
 
 function isConfigError(err: any): boolean {
   if (!isFirebaseActive) return true;
@@ -52,7 +83,6 @@ function isConfigError(err: any): boolean {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
-    // Check local storage for persistent session
     const saved = localStorage.getItem("mp_cyber_session");
     if (saved) {
       try { return JSON.parse(saved); } catch { return null; }
@@ -60,6 +90,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   });
   const [loading, setLoading] = useState(true);
+
+  // Pre-seed demo officer credentials on first load if not present
+  useEffect(() => {
+    (async () => {
+      const accounts = getStoredAccounts();
+      if (!accounts["officer@mppolice.gov.in"]) {
+        const hash = await hashPassword("Police@123");
+        saveAccount({
+          email: "officer@mppolice.gov.in",
+          passwordHash: hash,
+          displayName: "Cyber Command Officer",
+          createdAt: Date.now(),
+        });
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     try {
@@ -73,7 +119,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (u) {
             setUser({ uid: u.uid, email: u.email, displayName: u.displayName });
           } else if (!user?.isGuest) {
-            // Only clear if not in demo/local session mode
             const localSaved = localStorage.getItem("mp_cyber_session");
             if (!localSaved) setUser(null);
           }
@@ -91,6 +136,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.isGuest]);
 
   const login = async (e: string, p: string) => {
+    const cleanEmail = e.toLowerCase().trim();
+
+    // 1. If Firebase is active and configured, use Firebase Auth
     if (isFirebaseActive && (auth as any)?.app) {
       try {
         await signInWithEmailAndPassword(auth, e, p);
@@ -102,11 +150,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Seamless authenticated session
+    // 2. Local Verified Account Authentication
+    const accounts = getStoredAccounts();
+    const stored = accounts[cleanEmail];
+
+    if (!stored) {
+      const err: any = new Error("No registered account found with this email.");
+      err.code = "auth/user-not-found";
+      throw err;
+    }
+
+    const inputHash = await hashPassword(p);
+    if (inputHash !== stored.passwordHash) {
+      const err: any = new Error("Incorrect password. Please verify and try again.");
+      err.code = "auth/wrong-password";
+      throw err;
+    }
+
     const loggedUser: AuthUser = {
       uid: `officer-${Date.now()}`,
-      email: e || "officer@mppolice.gov.in",
-      displayName: e.split("@")[0] || "Cyber Command Officer",
+      email: stored.email,
+      displayName: stored.displayName || cleanEmail.split("@")[0],
       isGuest: false,
     };
     setUser(loggedUser);
@@ -125,6 +189,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (e: string, p: string) => {
+    const cleanEmail = e.toLowerCase().trim();
+
+    // 1. If Firebase is active and configured, use Firebase Auth
     if (isFirebaseActive && (auth as any)?.app) {
       try {
         await createUserWithEmailAndPassword(auth, e, p);
@@ -136,11 +203,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Seamless registration for citizen
+    // 2. Local Account Registration with Unique Check
+    const accounts = getStoredAccounts();
+    if (accounts[cleanEmail]) {
+      const err: any = new Error("An account with this email already exists.");
+      err.code = "auth/email-already-in-use";
+      throw err;
+    }
+
+    const passwordHash = await hashPassword(p);
+    const newAccount: StoredAccount = {
+      email: cleanEmail,
+      passwordHash,
+      displayName: cleanEmail.split("@")[0] || "Registered Citizen",
+      createdAt: Date.now(),
+    };
+    saveAccount(newAccount);
+
     const citizenUser: AuthUser = {
       uid: `citizen-${Date.now()}`,
-      email: e,
-      displayName: e.split("@")[0] || "Registered Citizen",
+      email: cleanEmail,
+      displayName: newAccount.displayName,
       isGuest: false,
     };
     setUser(citizenUser);
@@ -160,6 +243,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (e: string) => {
+    const cleanEmail = e.toLowerCase().trim();
+
     if (isFirebaseActive && (auth as any)?.app) {
       try {
         await sendPasswordResetEmail(auth, e);
@@ -170,6 +255,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     }
+
+    const accounts = getStoredAccounts();
+    if (!accounts[cleanEmail]) {
+      const err: any = new Error("No account found with this email.");
+      err.code = "auth/user-not-found";
+      throw err;
+    }
+
     return Promise.resolve();
   };
 

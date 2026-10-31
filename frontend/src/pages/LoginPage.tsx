@@ -105,11 +105,11 @@ export default function LoginPage() {
 
 function friendlyError(code: string) {
   const map: Record<string, string> = {
-    "auth/user-not-found":   "No account found with this email.",
-    "auth/wrong-password":   "Incorrect password. Please try again.",
+    "auth/user-not-found":   "No account found with this email. Please register first.",
+    "auth/wrong-password":   "Incorrect password. Please verify and try again.",
     "auth/invalid-email":    "Please enter a valid email address.",
     "auth/too-many-requests":"Too many attempts. Please try again later.",
     "auth/invalid-credential":"Invalid email or password.",
   };
-  return map[code] ?? "Authentication error or sandbox mode. Try Quick Officer Access.";
+  return map[code] ?? (code || "Authentication error.");
 }
