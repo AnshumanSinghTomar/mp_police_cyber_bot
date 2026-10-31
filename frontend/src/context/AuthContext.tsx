@@ -41,14 +41,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const unsub = onAuthStateChanged(auth, (u: User | null) => {
-        if (u) {
-          setUser({ uid: u.uid, email: u.email, displayName: u.displayName });
-        } else if (!user?.isGuest) {
-          setUser(null);
-        }
+      if (!auth || typeof onAuthStateChanged !== "function" || !(auth as any).app) {
         setLoading(false);
-      });
+        return;
+      }
+      const unsub = onAuthStateChanged(
+        auth,
+        (u: User | null) => {
+          if (u) {
+            setUser({ uid: u.uid, email: u.email, displayName: u.displayName });
+          } else if (!user?.isGuest) {
+            setUser(null);
+          }
+          setLoading(false);
+        },
+        (err) => {
+          console.warn("Auth observer warning:", err);
+          setLoading(false);
+        }
+      );
       return unsub;
     } catch {
       // If Firebase fails initialization due to dummy config
