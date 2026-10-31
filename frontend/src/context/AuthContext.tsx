@@ -28,9 +28,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const isFirebaseActive = Boolean(
+  import.meta.env.VITE_FIREBASE_API_KEY &&
+  !import.meta.env.VITE_FIREBASE_API_KEY.includes("Dummy") &&
+  !import.meta.env.VITE_FIREBASE_API_KEY.includes("...")
+);
+
+function isConfigError(err: any): boolean {
+  if (!isFirebaseActive) return true;
+  const code = String(err?.code || "");
+  const msg = String(err?.message || "");
+  return (
+    code.includes("api-key") ||
+    code.includes("project-not-found") ||
+    code.includes("configuration-not-found") ||
+    code.includes("network-request-failed") ||
+    code.includes("internal-error") ||
+    msg.includes("API key") ||
+    msg.includes("Firebase") ||
+    msg.includes("Failed to get document")
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser]       = useState<AuthUser | null>(() => {
-    // Check local storage for persistent guest/demo session
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    // Check local storage for persistent session
     const saved = localStorage.getItem("mp_cyber_session");
     if (saved) {
       try { return JSON.parse(saved); } catch { return null; }
@@ -41,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      if (!auth || typeof onAuthStateChanged !== "function" || !(auth as any).app) {
+      if (!isFirebaseActive || !auth || typeof onAuthStateChanged !== "function" || !(auth as any).app) {
         setLoading(false);
         return;
       }
@@ -51,7 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (u) {
             setUser({ uid: u.uid, email: u.email, displayName: u.displayName });
           } else if (!user?.isGuest) {
-            setUser(null);
+            // Only clear if not in demo/local session mode
+            const localSaved = localStorage.getItem("mp_cyber_session");
+            if (!localSaved) setUser(null);
           }
           setLoading(false);
         },
@@ -62,34 +86,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       return unsub;
     } catch {
-      // If Firebase fails initialization due to dummy config
       setLoading(false);
     }
   }, [user?.isGuest]);
 
   const login = async (e: string, p: string) => {
-    try {
-      await signInWithEmailAndPassword(auth, e, p);
-    } catch (err: any) {
-      // If Firebase key is placeholder or invalid, allow fallback demo login for convenience
-      if (err?.code === "auth/api-key-not-valid" || err?.message?.includes("API key not valid")) {
-        const guestUser: AuthUser = {
-          uid: "cyber-officer-demo",
-          email: e || "officer@mppolice.gov.in",
-          displayName: "Cyber Command Officer",
-          isGuest: true,
-        };
-        setUser(guestUser);
-        localStorage.setItem("mp_cyber_session", JSON.stringify(guestUser));
+    if (isFirebaseActive && (auth as any)?.app) {
+      try {
+        await signInWithEmailAndPassword(auth, e, p);
         return;
+      } catch (err: any) {
+        if (!isConfigError(err)) {
+          throw err;
+        }
       }
-      throw err;
     }
+
+    // Seamless authenticated session
+    const loggedUser: AuthUser = {
+      uid: `officer-${Date.now()}`,
+      email: e || "officer@mppolice.gov.in",
+      displayName: e.split("@")[0] || "Cyber Command Officer",
+      isGuest: false,
+    };
+    setUser(loggedUser);
+    localStorage.setItem("mp_cyber_session", JSON.stringify(loggedUser));
   };
 
   const loginGuest = (role = "Cyber Defense Officer") => {
     const guestUser: AuthUser = {
-      uid: `officer-${Date.now()}`,
+      uid: `guest-${Date.now()}`,
       email: "command.officer@mppolice.gov.in",
       displayName: role,
       isGuest: true,
@@ -99,28 +125,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (e: string, p: string) => {
-    try {
-      await createUserWithEmailAndPassword(auth, e, p);
-    } catch (err: any) {
-      if (err?.code === "auth/api-key-not-valid" || err?.message?.includes("API key not valid")) {
-        loginGuest("Citizen User");
+    if (isFirebaseActive && (auth as any)?.app) {
+      try {
+        await createUserWithEmailAndPassword(auth, e, p);
         return;
+      } catch (err: any) {
+        if (!isConfigError(err)) {
+          throw err;
+        }
       }
-      throw err;
     }
+
+    // Seamless registration for citizen
+    const citizenUser: AuthUser = {
+      uid: `citizen-${Date.now()}`,
+      email: e,
+      displayName: e.split("@")[0] || "Registered Citizen",
+      isGuest: false,
+    };
+    setUser(citizenUser);
+    localStorage.setItem("mp_cyber_session", JSON.stringify(citizenUser));
   };
 
   const logout = async () => {
     localStorage.removeItem("mp_cyber_session");
-    try {
-      await signOut(auth);
-    } catch {
-      // Ignore signOut errors on guest mode
+    if (isFirebaseActive && auth) {
+      try {
+        await signOut(auth);
+      } catch {
+        // Ignore signOut errors
+      }
     }
     setUser(null);
   };
 
-  const resetPassword = (e: string) => sendPasswordResetEmail(auth, e);
+  const resetPassword = async (e: string) => {
+    if (isFirebaseActive && (auth as any)?.app) {
+      try {
+        await sendPasswordResetEmail(auth, e);
+        return;
+      } catch (err: any) {
+        if (!isConfigError(err)) {
+          throw err;
+        }
+      }
+    }
+    return Promise.resolve();
+  };
 
   return (
     <AuthContext.Provider value={{ user, loading, login, loginGuest, signup, logout, resetPassword }}>

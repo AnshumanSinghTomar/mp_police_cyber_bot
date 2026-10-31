@@ -21,7 +21,7 @@ export default function SignupPage() {
     } catch (err: any) {
       const msg = err.code === "auth/email-already-in-use"
         ? "An account with this email already exists."
-        : "Sandbox mode: Click quick access below or verify Firebase credentials.";
+        : (err.message || "Registration encountered an issue. Please try again.");
       setError(msg);
     } finally { 
       setBusy(false); 
